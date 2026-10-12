@@ -5,6 +5,7 @@ It is a proof of concept using socket.io hosted on a nodejs server.
 ## Play locally
 
 Run `npm ci`, then `npm start`, and open http://localhost:5767.
+The client connects to https://multiplayer-game-j0cm.onrender.com over WebSocket, including when opened as a local HTML file. `SERVER_URL` in `client/script.js` sets the multiplayer server address.
 Enter a display name to join. Names are remembered in your browser; no account or password is needed.
 Players can share a name and are identified separately for each connection.
 

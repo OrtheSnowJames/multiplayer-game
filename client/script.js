@@ -93,8 +93,9 @@ function attack() {
 	sendGameEvent("move", { x: player.x, y: player.y, roomName: game.roomName });
 	sendGameEvent("attack");
 }
-const socket = typeof io === "function" && ["http:", "https:"].includes(location.protocol)
-	? io({ autoConnect: false, timeout: 5000 }) : null;
+const SERVER_URL = "https://multiplayer-game-j0cm.onrender.com";
+const socket = typeof io === "function"
+	? io(SERVER_URL, { autoConnect: false, timeout: 5000, transports: ["websocket"] }) : null;
 const entryScreen = document.getElementById("entry-screen");
 const gameScreen = document.getElementById("game-screen");
 const nameInput = document.getElementById("player-name");
