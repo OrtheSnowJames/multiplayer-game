@@ -12,6 +12,7 @@ app.get("/", (req, res) => res.redirect("/client/index.html"));
 
 const rooms = createRooms();
 const CHAT_ROOM = "chat";
+const chatParticipants = new Map();
 const dungeonSimulation = createDungeonSimulation(rooms.dungeon);
 dungeonSimulation.reset();
 
@@ -22,6 +23,10 @@ function readName(data) {
 
 function broadcastMessage(name, msg) {
 	io.to([...Object.keys(rooms), CHAT_ROOM]).emit("playerMessage", { name, msg });
+}
+
+function broadcastPresence() {
+	io.to(CHAT_ROOM).emit("chatPresence", [...chatParticipants.values()]);
 }
 
 function transferPlayer(socket, roomName, newPos) {
@@ -64,6 +69,7 @@ setInterval(() => {
 io.on("connection", (socket) => {
 	socket.data.roomName = null;
 	socket.data.chatName = null;
+	socket.emit("chatPresence", [...chatParticipants.values()]);
 	let lastAttack = 0;
 	const playerData = {
 		x: 65 + Math.floor(Math.random() * 160) * 5,
@@ -88,17 +94,24 @@ io.on("connection", (socket) => {
 		}
 		playerData.name = name;
 		transferPlayer(socket, "lobby");
+		chatParticipants.set(socket.id, name);
+		broadcastPresence();
 		broadcastMessage("Server", `${name} joined the game`);
 	});
 
 	socket.on("joinChat", (data) => {
 		if (socket.data.roomName) return socket.emit("joinError", "Already joined the game.");
-		if (socket.data.chatName) return socket.emit("currentChat", { name: socket.data.chatName });
+		if (socket.data.chatName) {
+			socket.emit("currentChat", { name: socket.data.chatName });
+			return socket.emit("chatPresence", [...chatParticipants.values()]);
+		}
 		const name = readName(data);
 		if (!name) return socket.emit("joinError", "Choose a name between 1 and 20 characters.");
 		socket.data.chatName = name;
+		chatParticipants.set(socket.id, name);
 		socket.join(CHAT_ROOM);
 		socket.emit("currentChat", { name });
+		broadcastPresence();
 		broadcastMessage("Server", `${name} joined the chat`);
 	});
 
@@ -152,6 +165,7 @@ io.on("connection", (socket) => {
 			delete rooms[currentRoom].players[socket.id];
 			socket.to(currentRoom).emit("playerDisconnect", socket.id);
 		}
+		if (chatParticipants.delete(socket.id)) broadcastPresence();
 	});
 });
 

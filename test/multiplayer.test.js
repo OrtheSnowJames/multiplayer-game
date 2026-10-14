@@ -69,6 +69,39 @@ function joinChat(socket, name) {
 	return nextEvent(socket, "currentChat", () => socket.emit("joinChat", { name }));
 }
 
+async function expectPresence(socket, names, trigger) {
+	const actual = await nextEvent(socket, "chatPresence", trigger, data => data.length === names.length);
+	assert.deepEqual(actual, names);
+}
+
+test("chat presence includes joined game players and visitors, not unjoined connections", async (t) => {
+	const player = await connect(t);
+	await enterDungeon(player, "Dungeon player");
+	const visitor = io(url, { autoConnect: false, reconnection: false, transports: ["websocket"] });
+	t.after(() => visitor.disconnect());
+	assert.deepEqual(await nextEvent(visitor, "chatPresence", () => visitor.connect()), ["Dungeon player"]);
+	await nextEvent(visitor, "joinError", () => visitor.emit("joinChat", {}));
+	const chat = await connect(t);
+	await expectPresence(chat, ["Dungeon player", "Chat visitor"], () => chat.emit("joinChat", { name: "Chat visitor" }));
+	await nextEvent(player, "currentGame", () => player.emit("joinRoom", { r: "lobby" }));
+	await expectPresence(chat, ["Dungeon player", "Chat visitor"], () => chat.emit("joinChat", { name: "Renamed" }));
+	await expectPresence(chat, ["Chat visitor"], () => player.disconnect());
+});
+
+test("chat presence removes the right duplicate name and restores visitors after reconnect", async (t) => {
+	const observer = await connect(t);
+	const player = await connect(t);
+	const chat = await connect(t);
+	await joinChat(observer, "Observer");
+	await expectPresence(observer, ["Observer", "Same name"], () => player.emit("joinGame", { name: "Same name" }));
+	await expectPresence(observer, ["Observer", "Same name", "Same name"], () => chat.emit("joinChat", { name: "Same name" }));
+	await expectPresence(observer, ["Observer", "Same name"], () => chat.disconnect());
+	await nextEvent(chat, "connect", () => chat.connect());
+	await expectPresence(observer, ["Observer", "Same name", "Same name"], () => chat.emit("joinChat", { name: "Same name" }));
+	await expectPresence(observer, ["Observer", "Same name"], () => player.disconnect());
+	await expectPresence(observer, ["Observer"], () => chat.disconnect());
+});
+
 test("chat-only joins validate and retain names without creating a game player", async (t) => {
 	const chat = await connect(t);
 	const player = await connect(t);
