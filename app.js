@@ -11,8 +11,18 @@ app.use("/client", express.static(__dirname + "/client"));
 app.get("/", (req, res) => res.redirect("/client/index.html"));
 
 const rooms = createRooms();
+const CHAT_ROOM = "chat";
 const dungeonSimulation = createDungeonSimulation(rooms.dungeon);
 dungeonSimulation.reset();
+
+function readName(data) {
+	const name = typeof data?.name === "string" ? data.name.trim().replace(/\s+/g, " ") : "";
+	return name && name.length <= 20 && !/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/u.test(name) ? name : null;
+}
+
+function broadcastMessage(name, msg) {
+	io.to([...Object.keys(rooms), CHAT_ROOM]).emit("playerMessage", { name, msg });
+}
 
 function transferPlayer(socket, roomName, newPos) {
 	const previousRoom = socket.data.roomName;
@@ -53,6 +63,7 @@ setInterval(() => {
 
 io.on("connection", (socket) => {
 	socket.data.roomName = null;
+	socket.data.chatName = null;
 	let lastAttack = 0;
 	const playerData = {
 		x: 65 + Math.floor(Math.random() * 160) * 5,
@@ -68,15 +79,27 @@ io.on("connection", (socket) => {
 	socket.data.player = playerData;
 
 	socket.on("joinGame", (data) => {
+		if (socket.data.chatName) return socket.emit("joinError", "Already joined the chat.");
 		const currentRoom = socket.data.roomName;
 		if (currentRoom) return socket.emit("currentGame", { ...rooms[currentRoom], roomName: currentRoom });
-		const name = typeof data?.name === "string" ? data.name.trim().replace(/\s+/g, " ") : "";
-		if (!name || name.length > 20 || /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/u.test(name)) {
+		const name = readName(data);
+		if (!name) {
 			return socket.emit("joinError", "Choose a name between 1 and 20 characters.");
 		}
 		playerData.name = name;
 		transferPlayer(socket, "lobby");
-		io.to(Object.keys(rooms)).emit("playerMessage", { name: "Server", msg: `${name} joined the game` });
+		broadcastMessage("Server", `${name} joined the game`);
+	});
+
+	socket.on("joinChat", (data) => {
+		if (socket.data.roomName) return socket.emit("joinError", "Already joined the game.");
+		if (socket.data.chatName) return socket.emit("currentChat", { name: socket.data.chatName });
+		const name = readName(data);
+		if (!name) return socket.emit("joinError", "Choose a name between 1 and 20 characters.");
+		socket.data.chatName = name;
+		socket.join(CHAT_ROOM);
+		socket.emit("currentChat", { name });
+		broadcastMessage("Server", `${name} joined the chat`);
 	});
 
 	socket.on("newSprite", (data) => {
@@ -88,8 +111,8 @@ io.on("connection", (socket) => {
 	});
 
 	socket.on("message", (data) => {
-		if (!socket.data.roomName || typeof data?.msg !== "string" || !data.msg.trim()) return;
-		io.to(Object.keys(rooms)).emit("playerMessage", { name: playerData.name, msg: data.msg.trim().slice(0, 300) });
+		if ((!socket.data.roomName && !socket.data.chatName) || typeof data?.msg !== "string" || !data.msg.trim()) return;
+		broadcastMessage(socket.data.chatName || playerData.name, data.msg.trim().slice(0, 300));
 	});
 
 	socket.on("joinRoom", (data) => {

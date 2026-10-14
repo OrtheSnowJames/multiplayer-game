@@ -65,6 +65,66 @@ function join(socket, name) {
 	return nextEvent(socket, "currentGame", () => socket.emit("joinGame", { name }));
 }
 
+function joinChat(socket, name) {
+	return nextEvent(socket, "currentChat", () => socket.emit("joinChat", { name }));
+}
+
+test("chat-only joins validate and retain names without creating a game player", async (t) => {
+	const chat = await connect(t);
+	const player = await connect(t);
+	await join(player, "Observer");
+	for (const data of [null, {}, { name: 123 }, { name: "   " }, { name: "x".repeat(21) }, { name: "bad\u0000name" }, { name: "bad\u202ename" }]) {
+		const error = await nextEvent(chat, "joinError", () => chat.emit("joinChat", data));
+		assert.match(error, /1 and 20/);
+	}
+	assert.deepEqual(await joinChat(chat, "  Chat   Visitor  "), { name: "Chat Visitor" });
+	assert.deepEqual(await joinChat(chat, "Changed name"), { name: "Chat Visitor" });
+	for (const [event, data] of [["joinRoom", { r: "lobby" }], ["move", { x: 10, y: 20 }], ["newSprite", 2], ["attack", null]]) chat.emit(event, data);
+	await joinChat(chat, "Chat Visitor");
+	assert.equal((await join(player, "Observer")).players[chat.id], undefined);
+	assert.match(await nextEvent(chat, "joinError", () => chat.emit("joinGame", { name: "Visitor" })), /joined the chat/);
+	assert.match(await nextEvent(player, "joinError", () => player.emit("joinChat", { name: "Observer" })), /joined the game/);
+});
+
+test("chat-only visitors and players in both game rooms exchange the same messages", async (t) => {
+	const lobby = await connect(t);
+	const dungeon = await connect(t);
+	const first = await connect(t);
+	const second = await connect(t);
+	await join(lobby, "Lobby player");
+	await enterDungeon(dungeon, "Dungeon player");
+	await joinChat(first, "Chat visitor");
+	await joinChat(second, "Chat witness");
+	const fromChat = [lobby, dungeon, first, second].map(socket => nextEvent(socket, "playerMessage", null, data => data.msg === "From chat"));
+	first.emit("message", { name: "Impersonated", msg: "  From chat  " });
+	for (const message of await Promise.all(fromChat)) assert.deepEqual(message, { name: "Chat visitor", msg: "From chat" });
+	const fromDungeon = nextEvent(first, "playerMessage", null, data => data.msg === "From dungeon");
+	dungeon.emit("message", { msg: "From dungeon" });
+	assert.deepEqual(await fromDungeon, { name: "Dungeon player", msg: "From dungeon" });
+	const longMessage = nextEvent(second, "playerMessage", null, data => data.name === "Chat visitor");
+	first.emit("message", { msg: "x".repeat(500) });
+	assert.equal((await longMessage).msg.length, 300);
+	assert.equal((await join(lobby, "Lobby player")).players[first.id], undefined);
+	assert.equal((await join(dungeon, "Dungeon player")).players[second.id], undefined);
+});
+
+test("chat visitors can reconnect and malformed chat messages are ignored", async (t) => {
+	const first = await connect(t);
+	const second = await connect(t);
+	await joinChat(first, "Visitor");
+	await joinChat(second, "Witness");
+	const received = [];
+	second.on("playerMessage", message => { if (message.name !== "Server") received.push(message); });
+	for (const data of [null, {}, { msg: 123 }, { msg: "   " }]) first.emit("message", data);
+	await joinChat(first, "Visitor");
+	assert.deepEqual(received, []);
+	first.disconnect();
+	await nextEvent(first, "connect", () => first.connect());
+	await joinChat(first, "Visitor");
+	const message = await nextEvent(second, "playerMessage", () => first.emit("message", { msg: "Reconnected" }), data => data.msg === "Reconnected");
+	assert.deepEqual(message, { name: "Visitor", msg: "Reconnected" });
+});
+
 test("joining requires a valid name and no account", async (t) => {
 	const socket = await connect(t);
 	for (const data of [null, {}, { name: 123 }, { name: "   " }, { name: "x".repeat(21) }, { name: "bad\u0000name" }, { name: "bad\u202ename" }]) {
