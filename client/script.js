@@ -94,6 +94,7 @@ function attack() {
 	sendGameEvent("attack");
 }
 const SERVER_URL = "https://multiplayer-game-j0cm.onrender.com";
+const SERVER_STARTUP_MESSAGE = "The server usually takes around 20-40 seconds to start. Please wait...";
 const socket = typeof io === "function"
 	? io(SERVER_URL, { autoConnect: false, timeout: 5000, transports: ["websocket"] }) : null;
 const entryScreen = document.getElementById("entry-screen");
@@ -115,7 +116,8 @@ function onServerEvent(event, handler) {
 
 function waitForServer() {
 	if (offlineMode || connectionTimer) return;
-	connectionTimer = setTimeout(startOfflineMode, 20000);
+	joinError.textContent = SERVER_STARTUP_MESSAGE;
+	connectionTimer = setTimeout(startOfflineMode, 60000);
 }
 
 function startOfflineMode() {
@@ -207,7 +209,7 @@ document.getElementById("join-form").addEventListener("submit", (event) => {
 	if (!socket?.connected) {
 		joining = true;
 		nameInput.disabled = true;
-		joinError.textContent = "Connecting...";
+		joinError.textContent = SERVER_STARTUP_MESSAGE;
 		waitForServer();
 		return;
 	}
@@ -221,7 +223,7 @@ onServerEvent("connect", () => {
 	else finishJoining();
 });
 onServerEvent("connect_error", () => {
-	joinError.textContent = "Can't reach the game yet. Trying to reconnect...";
+	joinError.textContent = SERVER_STARTUP_MESSAGE;
 });
 onServerEvent("joinError", (message) => {
 	pendingName = null;
@@ -313,7 +315,7 @@ onServerEvent("disconnectMe", (data) => {
 });
 onServerEvent("disconnect", () => {
 	pendingName = pendingName || lastJoinedName;
-	showEntry("Connection lost. Reconnecting...");
+	showEntry(SERVER_STARTUP_MESSAGE);
 	waitForServer();
 	if (!socket.active) socket.connect();
 });

@@ -9,7 +9,7 @@ The client connects to https://multiplayer-game-j0cm.onrender.com over WebSocket
 Enter a display name to join. Names are remembered in your browser; no account or password is needed.
 Players can share a name and are identified separately for each connection.
 
-If the multiplayer server cannot be reached for 20 seconds, the game shows "Using offline mode" and switches to solo play. A name submitted while connecting joins automatically when either mode becomes ready. Offline play includes dungeon zombies, attacks, and respawns; refresh to try multiplayer again.
+The server usually takes around 20-40 seconds to start. The game waits up to 60 seconds before showing "Using offline mode" and switching to solo play. A name submitted while connecting joins automatically when either mode becomes ready. Offline play includes dungeon zombies, attacks, and respawns; refresh to try multiplayer again.
 
 You can also open `client/index.html` directly or serve the `client` folder as a static archive. Its scripts, room data, and sprites are local. The server and browser both load `client/dungeon.js` for dungeon rules and `client/world.js` for room definitions.
 
