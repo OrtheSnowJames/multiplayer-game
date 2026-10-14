@@ -1,4 +1,10 @@
 var express = require("express");
+const {
+    RegExpMatcher,
+    TextCensor,
+    englishDataset,
+    englishRecommendedTransformers,
+} = require("obscenity");
 var http = require("http");
 var { Server } = require("socket.io");
 const { intersects, attackArea, createDungeonSimulation, ATTACK_COOLDOWN, WORLD_WIDTH, WORLD_HEIGHT } = require("./client/dungeon");
@@ -21,8 +27,17 @@ function readName(data) {
 	return name && name.length <= 20 && !/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/u.test(name) ? name : null;
 }
 
+const matcher = new RegExpMatcher({
+    ...englishDataset.build(),
+    ...englishRecommendedTransformers,
+});
+const censor = new TextCensor();
+
 function broadcastMessage(name, msg) {
-	io.to([...Object.keys(rooms), CHAT_ROOM]).emit("playerMessage", { name, msg });
+  if (typeof msg !== "string") return;
+	const matches = matcher.getAllMatches(msg);
+	const censoredMsg = censor.applyTo(msg, matches);
+	io.to([...Object.keys(rooms), CHAT_ROOM]).emit("playerMessage", { name, msg: censoredMsg });
 }
 
 function broadcastPresence() {
